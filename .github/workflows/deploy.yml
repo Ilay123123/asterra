@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write  # Needed to push tags
+  packages: write  # Needed for ECR
+  actions: read    # Needed for workflow
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: asterra-app
