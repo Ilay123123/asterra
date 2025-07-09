@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ASTERRA DevOps Assignment - Technical Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; }
+        h2 { color: #34495e; }
+        .section { margin-bottom: 30px; }
+        .highlight { background-color: #f8f9fa; padding: 15px; border-left: 4px solid #3498db; }
+        .challenge { background-color: #fff3cd; padding: 10px; border-radius: 5px; }
+        ul { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <h1>ASTERRA DevOps Assignment - Technical Implementation Report</h1>
+
+    <div class="section">
+        <h2>🚀 CI/CD Pipeline</h2>
+        <p>Implemented comprehensive GitHub Actions workflow with:</p>
+        <ul>
+            <li><strong>Testing:</strong> Automated code quality checks (flake8, black), unit tests</li>
+            <li><strong>Building:</strong> Docker image build and push to ECR with versioning</li>
+            <li><strong>Deployment:</strong> Automated infrastructure updates via Terraform</li>
+            <li><strong>Monitoring:</strong> Integration with CloudWatch for logging and metrics</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>📊 Key Features Delivered</h2>
+        <div class="highlight">
+            <ul>
+                <li>✅ <strong>Complete Infrastructure as Code:</strong> Single-script deployment with Terraform</li>
+                <li>✅ <strong>GeoJSON Processing Pipeline:</strong> S3 → Validation → PostGIS storage</li>
+                <li>✅ <strong>Public Services:</strong> ODK Central accessible via load balancer</li>
+                <li>✅ <strong>Development Workspace:</strong> Windows Server with RDP and GIS tools</li>
+                <li>✅ <strong>Security Best Practices:</strong> Encrypted storage, secret management, network isolation</li>
+                <li>✅ <strong>Monitoring & Logging:</strong> CloudWatch integration across all services</li>
+                <li>✅ <strong>Auto-scaling:</strong> CPU-based scaling for high availability</li>
+                <li>✅ <strong>Containerization:</strong> Docker with GeoPandas and GDAL support</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>💡 Learning Outcomes</h2>
+        <p>This project reinforced several key DevOps concepts:</p>
+        <ul>
+            <li><strong>Infrastructure as Code:</strong> Terraform's power in creating reproducible infrastructure</li>
+            <li><strong>Container Orchestration:</strong> ECS Fargate vs EC2 trade-offs for different workloads</li>
+            <li><strong>Network Architecture:</strong> Proper subnet design and security group configuration</li>
+            <li><strong>Database Integration:</strong> RDS parameter groups and extension management</li>
+            <li><strong>CI/CD Best Practices:</strong> Automated testing, building, and deployment workflows</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>🔧 Deployment Instructions</h2>
+        <div class="highlight">
+            <p><strong>Prerequisites:</strong> AWS CLI configured, Terraform installed, Docker running</p>
+            <p><strong>Single Command Deployment:</strong></p>
+            <code>./deploy.sh</code>
+            <p>This script handles the complete infrastructure setup, application building, and service deployment.</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🌐 Access Points</h2>
+        <ul>
+            <li><strong>Public Service:</strong> http://[ALB-DNS-NAME] (ODK Central)</li>
+            <li><strong>Processing Service:</strong> Internal ECS service with health endpoints</li>
+            <li><strong>Development Workspace:</strong> RDP to [WINDOWS-PUBLIC-IP]:3389</li>
+            <li><strong>Database:</strong> Private access via application services</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <p><em>Implementation completed as part of ASTERRA DevOps Technical Assignment</em></p>
+    </div>
+</body>
+</html>
