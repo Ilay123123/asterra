@@ -73,7 +73,7 @@ jobs:
     - name: Update ECS service
       env:
         CLUSTER_NAME: asterra-cluster
-        SERVICE_NAME: asterra-geojson-processor-service
+        SERVICE_NAME: asterra-geojson-processor
       run: |
         aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
 
