@@ -5,13 +5,13 @@
 variable "rdp_allowed_cidr" {
   description = "CIDR block allowed for RDP access"
   type        = string
-  default     = "0.0.0.0/0"  # Change to your specific IP for security
+  default     = "0.0.0.0/0" # Change to your specific IP for security
 }
 
 variable "ssh_allowed_cidr" {
   description = "CIDR block allowed for SSH access"
   type        = string
-  default     = "0.0.0.0/0"  # Change to your specific IP for security
+  default     = "0.0.0.0/0" # Change to your specific IP for security
 }
 
 variable "availability_zones" {
@@ -443,11 +443,11 @@ output "db_subnet_group_name" {
 output "security_group_ids" {
   description = "Map of security group IDs"
   value = {
-    public    = aws_security_group.public_sg.id
-    private   = aws_security_group.private_sg.id
-    database  = aws_security_group.database_sg.id
-    rdp       = aws_security_group.rdp_sg.id
-    alb       = aws_security_group.alb_sg.id
+    public   = aws_security_group.public_sg.id
+    private  = aws_security_group.private_sg.id
+    database = aws_security_group.database_sg.id
+    rdp      = aws_security_group.rdp_sg.id
+    alb      = aws_security_group.alb_sg.id
   }
 }
 

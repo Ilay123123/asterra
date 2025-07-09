@@ -4,7 +4,7 @@
 variable "s3_force_destroy" {
   description = "Allow bucket to be destroyed even if it contains objects"
   type        = bool
-  default     = true  # For assignment - allows easy cleanup
+  default     = true # For assignment - allows easy cleanup
 }
 
 # RandomID for unique bucket names
@@ -63,6 +63,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_ingestion" {
     id     = "transition_to_ia"
     status = "Enabled"
 
+    filter {}
+
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
@@ -74,17 +76,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_ingestion" {
     }
 
     expiration {
-      days = 365  # Delete files after 1 year
+      days = 365 # Delete files after 1 year
     }
 
     noncurrent_version_expiration {
-      noncurrent_days = 30  # Delete old versions after 30 days
+      noncurrent_days = 30 # Delete old versions after 30 days
     }
   }
 
   rule {
     id     = "delete_incomplete_uploads"
     status = "Enabled"
+
+    filter {}
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 1
@@ -173,22 +177,22 @@ resource "aws_s3_bucket_website_configuration" "public_docs" {
   }
 }
 
-# Public read access for docs bucket
-resource "aws_s3_bucket_policy" "public_docs_policy" {
-  bucket = aws_s3_bucket.public_docs.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = "*"
-        Action = "s3:GetObject"
-        Resource = "${aws_s3_bucket.public_docs.arn}/*"
-      }
-    ]
-  })
-}
+# # Public read access for docs bucket
+# resource "aws_s3_bucket_policy" "public_docs_policy" {
+#   bucket = aws_s3_bucket.public_docs.id
+#
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Effect    = "Allow"
+#         Principal = "*"
+#         Action    = "s3:GetObject"
+#         Resource  = "${aws_s3_bucket.public_docs.arn}/*"
+#       }
+#     ]
+#   })
+# }
 
 # Server-side encryption for public docs bucket
 resource "aws_s3_bucket_server_side_encryption_configuration" "public_docs" {
@@ -224,7 +228,7 @@ resource "aws_s3_object" "sample_geojson" {
         type = "Feature"
         geometry = {
           type        = "Point"
-          coordinates = [34.7818, 32.0853]  # Tel Aviv coordinates
+          coordinates = [34.7818, 32.0853] # Tel Aviv coordinates
         }
         properties = {
           name        = "Tel Aviv Sample Point"
@@ -279,5 +283,3 @@ output "sample_geojson_url" {
   value       = "s3://${aws_s3_bucket.data_ingestion.bucket}/${aws_s3_object.sample_geojson.key}"
 }
 
-# Data source for current AWS region
-data "aws_region" "current" {}

@@ -44,13 +44,13 @@ variable "vpc_cidr" {
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.t3.micro"  # Free tier eligible
+  default     = "db.t3.micro" # Free tier eligible
 }
 
 variable "db_allocated_storage" {
   description = "Allocated storage for RDS instance (GB)"
   type        = number
-  default     = 20  # Free tier limit
+  default     = 20 # Free tier limit
 }
 
 variable "db_max_allocated_storage" {
@@ -202,7 +202,7 @@ variable "enable_encryption" {
 variable "deletion_protection" {
   description = "Enable deletion protection for critical resources"
   type        = bool
-  default     = false  # Set to true in production
+  default     = false # Set to true in production
 }
 
 variable "backup_retention_period" {
@@ -241,7 +241,7 @@ variable "windows_admin_password" {
   description = "Windows administrator password"
   type        = string
   sensitive   = true
-  default     = "AsterraAssignment2024!"  # Change this
+  default     = "AsterraAssignment2024!" # Change this
 }
 
 # ==============================================================================

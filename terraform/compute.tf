@@ -8,13 +8,13 @@
 variable "instance_type" {
   description = "EC2 instance type for general compute"
   type        = string
-  default     = "t3.micro"  # Free tier eligible
+  default     = "t3.micro" # Free tier eligible
 }
 
 variable "windows_instance_type" {
   description = "EC2 instance type for Windows development workspace"
   type        = string
-  default     = "t3.small"  # Minimum for Windows
+  default     = "t3.small" # Minimum for Windows
 }
 
 variable "key_pair_name" {
@@ -220,7 +220,7 @@ resource "aws_lb" "public_alb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
-  subnets           = aws_subnet.public[*].id
+  subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = false # Set to true in production
 
@@ -320,10 +320,10 @@ resource "aws_launch_template" "public_server" {
 
 # Auto Scaling Group for Public Servers
 resource "aws_autoscaling_group" "public_asg" {
-  name                = "asterra-public-asg"
-  vpc_zone_identifier = aws_subnet.public[*].id
-  target_group_arns   = [aws_lb_target_group.public_tg.arn]
-  health_check_type   = "ELB"
+  name                      = "asterra-public-asg"
+  vpc_zone_identifier       = aws_subnet.public[*].id
+  target_group_arns         = [aws_lb_target_group.public_tg.arn]
+  health_check_type         = "ELB"
   health_check_grace_period = 300
 
   min_size         = var.asg_min_size
@@ -353,7 +353,7 @@ resource "aws_autoscaling_policy" "scale_up" {
   name                   = "asterra-scale-up"
   scaling_adjustment     = 1
   adjustment_type        = "ChangeInCapacity"
-  cooldown              = 300
+  cooldown               = 300
   autoscaling_group_name = aws_autoscaling_group.public_asg.name
 }
 
@@ -382,8 +382,8 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 resource "aws_instance" "private_server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
-  key_name              = aws_key_pair.main.key_name
-  subnet_id             = aws_subnet.private[0].id
+  key_name               = aws_key_pair.main.key_name
+  subnet_id              = aws_subnet.private[0].id
   vpc_security_group_ids = [aws_security_group.private_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
@@ -410,10 +410,10 @@ resource "aws_instance" "private_server" {
 # ==============================================================================
 
 resource "aws_instance" "windows_workspace" {
-  ami                    = data.aws_ami.windows_server.id
-  instance_type          = var.windows_instance_type
-  key_name              = aws_key_pair.main.key_name
-  subnet_id             = aws_subnet.public[0].id
+  ami           = data.aws_ami.windows_server.id
+  instance_type = var.windows_instance_type
+  key_name      = aws_key_pair.main.key_name
+  subnet_id     = aws_subnet.public[0].id
   vpc_security_group_ids = [
     aws_security_group.public_sg.id,
     aws_security_group.rdp_sg.id
@@ -425,7 +425,7 @@ resource "aws_instance" "windows_workspace" {
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = 50  # Windows needs more space
+    volume_size = 50 # Windows needs more space
     encrypted   = var.enable_encryption
   }
 
@@ -503,7 +503,7 @@ resource "aws_ecs_task_definition" "geojson_processor" {
   cpu                      = var.ecs_cpu
   memory                   = var.ecs_memory
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn           = aws_iam_role.ecs_task_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {

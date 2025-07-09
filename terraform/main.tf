@@ -18,16 +18,6 @@ terraform {
       version = "~> 3.1"
     }
   }
-
-  # Backend configuration for state storage
-  # Uncomment after first deployment when S3 bucket is created
-  # backend "s3" {
-  #   bucket         = "asterra-terraform-state-XXXXXXXX"  # Replace with actual bucket name
-  #   key            = "terraform/asterra-assignment.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "asterra-terraform-locks"  # Optional: for state locking
-  # }
 }
 
 # ==============================================================================
@@ -36,24 +26,13 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-
-  # Default tags applied to all resources
-  default_tags {
-    tags = local.common_tags
-  }
 }
 
 # ==============================================================================
-# DATA SOURCES
+# DATA SOURCES (Only unique ones - others are in their respective files)
 # ==============================================================================
 
 data "aws_caller_identity" "current" {}
-
-data "aws_region" "current" {}
-
-data "aws_availability_zones" "available" {
-  state = "available"
-}
 
 # ==============================================================================
 # LOCAL VALUES
@@ -61,12 +40,7 @@ data "aws_availability_zones" "available" {
 
 locals {
   # Common tags applied to all resources
-  common_tags = merge(var.common_tags, {
-    Timestamp   = timestamp()
-    Region      = data.aws_region.current.name
-    AccountId   = data.aws_caller_identity.current.account_id
-    DeployedBy  = "terraform"
-  })
+  common_tags = var.common_tags
 
   # Resource naming convention
   name_prefix = "${var.project_name}-${var.environment}"
@@ -173,20 +147,20 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 
 # Lambda function to trigger ECS task when GeoJSON files are uploaded
 resource "aws_lambda_function" "s3_geojson_processor" {
-  filename         = "lambda_function.zip"
-  function_name    = "${local.name_prefix}-s3-geojson-processor"
-  role            = aws_iam_role.lambda_s3_processor.arn
-  handler         = "index.handler"
-  runtime         = "python3.9"
-  timeout         = 60
+  filename      = "lambda_function.zip"
+  function_name = "${local.name_prefix}-s3-geojson-processor"
+  role          = aws_iam_role.lambda_s3_processor.arn
+  handler       = "index.handler"
+  runtime       = "python3.9"
+  timeout       = 60
 
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
   environment {
     variables = {
-      ECS_CLUSTER_NAME = aws_ecs_cluster.main.name
+      ECS_CLUSTER_NAME    = aws_ecs_cluster.main.name
       ECS_TASK_DEFINITION = aws_ecs_task_definition.geojson_processor.arn
-      ECS_SUBNETS = join(",", aws_subnet.private[*].id)
+      ECS_SUBNETS         = join(",", aws_subnet.private[*].id)
       ECS_SECURITY_GROUPS = aws_security_group.private_sg.id
     }
   }
@@ -306,12 +280,12 @@ resource "aws_cloudwatch_dashboard" "asterra_dashboard" {
 output "deployment_info" {
   description = "Information about this deployment"
   value = {
-    project_name    = var.project_name
-    environment     = var.environment
-    aws_region      = data.aws_region.current.name
-    aws_account_id  = data.aws_caller_identity.current.account_id
-    deployment_id   = random_id.deployment.hex
-    deployed_at     = timestamp()
+    project_name   = var.project_name
+    environment    = var.environment
+    aws_region     = data.aws_region.current.name
+    aws_account_id = data.aws_caller_identity.current.account_id
+    deployment_id  = random_id.deployment.hex
+    deployed_at    = timestamp()
   }
 }
 
@@ -331,10 +305,10 @@ output "cloudwatch_dashboard_url" {
 output "access_instructions" {
   description = "Instructions for accessing deployed services"
   value = {
-    public_service       = "Access ODK Central at: http://${aws_lb.public_alb.dns_name}"
-    windows_workspace    = "RDP to: ${aws_instance.windows_workspace.public_ip}:3389"
-    documentation       = "View docs at: http://${aws_s3_bucket.public_docs.bucket}.s3-website-${data.aws_region.current.name}.amazonaws.com"
-    monitoring          = "CloudWatch Dashboard: https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=${aws_cloudwatch_dashboard.asterra_dashboard.dashboard_name}"
-    s3_upload_bucket    = "Upload GeoJSON files to: s3://${aws_s3_bucket.data_ingestion.bucket}"
+    public_service    = "Access ODK Central at: http://${aws_lb.public_alb.dns_name}"
+    windows_workspace = "RDP to: ${aws_instance.windows_workspace.public_ip}:3389"
+    documentation     = "View docs at: http://${aws_s3_bucket.public_docs.bucket}.s3-website-${data.aws_region.current.name}.amazonaws.com"
+    monitoring        = "CloudWatch Dashboard: https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=${aws_cloudwatch_dashboard.asterra_dashboard.dashboard_name}"
+    s3_upload_bucket  = "Upload GeoJSON files to: s3://${aws_s3_bucket.data_ingestion.bucket}"
   }
 }

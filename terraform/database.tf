@@ -1,7 +1,7 @@
 # PostgreSQL RDS instance with PostGIS extension
 
 # Variables
-variable  "db_username" {
+variable "db_username" {
   description = "Database master username"
   type        = string
   default     = "postgres"
@@ -9,9 +9,9 @@ variable  "db_username" {
 
 variable "db_password" {
   description = "Database master password"
-  type = string
-  sensitive = true
-  default = "Aa12345678912345"
+  type        = string
+  sensitive   = true
+  default     = "Aa12345678912345"
 }
 
 variable "db_name" {
@@ -20,13 +20,6 @@ variable "db_name" {
   default     = "asterra_gis"
 }
 
-# Data sources to get networking info
-data "terraform_remote_state" "networking" {
-  backend = "local"  # Change to "s3" if using remote state
-  config = {
-    path = "./terraform.tfstate"  # Path to networking state file
-  }
-}
 
 # Random password generation (optional - more secure)
 resource "random_password" "db_password" {
@@ -35,35 +28,32 @@ resource "random_password" "db_password" {
 }
 # RDS Subnet Group (already created in networking.tf, but referencing here)
 locals {
-  db_subnet_group_name = data.terraform_remote_state.networking.outputs.db_subnet_group_name
-  database_sg_id       = data.terraform_remote_state.networking.outputs.security_group_ids.database
-  vpc_id              = data.terraform_remote_state.networking.outputs.vpc_id
+  db_subnet_group_name = aws_db_subnet_group.main.name
+  database_sg_id       = aws_security_group.database_sg.id
+  vpc_id               = aws_vpc.main.id
 }
+
 
 # Parameter Group for PostgreSQL with PostGIS
 resource "aws_db_parameter_group" "postgres_postgis" {
   family = "postgres15"
-  name   = "asterra-postgres-postgis"
+  name   = "asterra-postgres-postgis-v2"
 
-  # Enable PostGIS extension
+  # Performance optimization parameters
   parameter {
-    name  = "shared_preload_libraries"
-    value = "postgis"
-  }
-
-  # Performance optimization
-  parameter {
-    name  = "max_connections"
-    value = "200"
+    name         = "max_connections"
+    value        = "200"
+    apply_method = "pending-reboot"
   }
 
   parameter {
-    name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"
+    name         = "shared_buffers"
+    value        = "{DBInstanceClassMemory/4}"
+    apply_method = "pending-reboot"
   }
 
   tags = {
-    Name        = "asterra-postgres-postgis"
+    Name        = "asterra-postgres-postgis-v2"
     Environment = "assignment"
   }
 }
@@ -73,40 +63,40 @@ resource "aws_db_instance" "postgres" {
   # Basic Configuration
   identifier     = "asterra-postgres-gis"
   engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.t3.micro"  # Free tier eligible
+  engine_version = "15.8"
+  instance_class = "db.t3.micro" # Free tier eligible
 
   # Database Configuration
   db_name  = var.db_name
   username = var.db_username
-  password = var.db_password  # Use random_password.db_password.result for random password
+  password = var.db_password # Use random_password.db_password.result for random password
 
   # Storage Configuration
-  allocated_storage     = 20    # GB - Free tier limit
-  max_allocated_storage = 100   # Auto-scaling limit
+  allocated_storage     = 20  # GB - Free tier limit
+  max_allocated_storage = 100 # Auto-scaling limit
   storage_type          = "gp3"
   storage_encrypted     = true
 
   # Network Configuration
   db_subnet_group_name   = local.db_subnet_group_name
   vpc_security_group_ids = [local.database_sg_id]
-  publicly_accessible    = false  # Private database
+  publicly_accessible    = false # Private database
 
   # Parameter Group
   parameter_group_name = aws_db_parameter_group.postgres_postgis.name
 
   # Backup Configuration
-  backup_retention_period = 7     # Days
-  backup_window          = "03:00-04:00"  # UTC
-  maintenance_window     = "sun:04:00-sun:05:00"  # UTC
+  backup_retention_period = 7                     # Days
+  backup_window           = "03:00-04:00"         # UTC
+  maintenance_window      = "sun:04:00-sun:05:00" # UTC
 
   # Monitoring
-  monitoring_interval = 60  # Seconds
+  monitoring_interval = 60 # Seconds
   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
 
   # Security
-  deletion_protection = false  # Set to true in production
-  skip_final_snapshot = true   # Set to false in production
+  deletion_protection = false # Set to true in production
+  skip_final_snapshot = true  # Set to false in production
 
   # Performance Insights
   performance_insights_enabled = true
@@ -122,20 +112,20 @@ resource "aws_iam_role" "rds_monitoring" {
   name = "asterra-rds-monitoring-role"
 
   assume_role_policy = jsonencode({
-    version = "2012-10-17"
-    statement = [
+    Version = "2012-10-17"
+    Statement = [
       {
-      Actions = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "monitoring.rds.amazon.com"
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
       }
-    }
     ]
   })
 
   tags = {
-     Name        = "asterra-rds-monitoring-role"
+    Name        = "asterra-rds-monitoring-role"
     Environment = "assignment"
   }
 }
@@ -159,7 +149,7 @@ resource "aws_cloudwatch_log_group" "postgres_logs" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "asterra/database/credentials"
   description             = "Database credentials for ASTERRA assignment"
-  recovery_window_in_days = 0  # For assignment - allows immediate deletion
+  recovery_window_in_days = 0 # For assignment - allows immediate deletion
 
   tags = {
     Name        = "asterra-db-credentials"
