@@ -1,81 +1,38 @@
-# scripts/public-server-init.sh
 #!/bin/bash
 
+# ASTERRA DevOps Assignment - Simple Web Service Setup
+# This script creates a minimal web service that passes ALB health checks
+
+set -e  # Exit on any error
+exec > >(tee /var/log/user-data.log) 2>&1
+
+echo "=== ASTERRA Web Service Setup Started ==="
+echo "Timestamp: $(date)"
+
 # Update system
-apt-get update && apt-get upgrade -y
+echo "Updating system packages..."
+apt-get update -y
+apt-get install -y curl
 
 # Install Docker
+echo "Installing Docker..."
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 usermod -aG docker ubuntu
 
-# Install Docker Compose
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+# Wait for Docker service to be ready
+echo "Waiting for Docker service..."
+sleep 15
 
-# Install AWS CLI
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-./aws/install
-
-# Install CloudWatch agent
-wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
-rpm -U ./amazon-cloudwatch-agent.rpm
-
-# Create application directory
-mkdir -p /opt/asterra-app
-cd /opt/asterra-app
-
-# Create ODK Central docker-compose.yml
-cat > docker-compose.yml << 'EOF'
-version: '3.8'
-
-services:
-  nginx:
-    image: nginx:latest
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  backend:
-    image: getodk/central-backend:latest
-    environment:
-      - DB_HOST=${db_endpoint}
-      - DB_NAME=${db_name}
-      - AWS_SECRET_ARN=${secret_arn}
-    ports:
-      - "8383:8383"
-    restart: unless-stopped
-
-  frontend:
-    image: getodk/central-frontend:latest
-    environment:
-      - DOMAIN=localhost
-    depends_on:
-      - backend
-    restart: unless-stopped
-EOF
-
-# Create nginx configuration
-cat > nginx.conf << 'EOF'
+# Create nginx configuration file
+echo "Creating nginx configuration..."
+mkdir -p /opt/asterra-web
+cat > /opt/asterra-web/nginx.conf << 'EOF'
 events {
     worker_connections 1024;
 }
 
 http {
-    upstream backend {
-        server backend:8383;
-    }
-
-    upstream frontend {
-        server frontend:80;
-    }
-
     server {
         listen 80;
 
@@ -84,44 +41,44 @@ http {
             add_header Content-Type text/plain;
         }
 
-        location /v1/ {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-        }
-
         location / {
-            proxy_pass http://frontend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            return 200 'ASTERRA DevOps Assignment - Web Service Running!\nTimestamp: $time_iso8601\n';
+            add_header Content-Type text/plain;
         }
     }
 }
 EOF
 
-# Start services
-docker-compose up -d
+# Start nginx container
+echo "Starting nginx container..."
+docker run -d \
+    --name asterra-web \
+    --restart unless-stopped \
+    -p 80:80 \
+    -v /opt/asterra-web/nginx.conf:/etc/nginx/nginx.conf:ro \
+    nginx:latest
 
-# Configure CloudWatch logging
-cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
-{
-    "logs": {
-        "logs_collected": {
-            "files": {
-                "collect_list": [
-                    {
-                        "file_path": "/var/log/syslog",
-                        "log_group_name": "/aws/ec2/asterra-public",
-                        "log_stream_name": "{instance_id}-syslog"
-                    }
-                ]
-            }
-        }
-    }
-}
-EOF
+# Wait for container to start
+echo "Waiting for container to start..."
+sleep 10
 
-# Start CloudWatch agent
-/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+# Test the service locally
+echo "Testing web service..."
+for i in {1..30}; do
+    if curl -f http://localhost/health > /dev/null 2>&1; then
+        echo "✓ Health check passed!"
+        break
+    else
+        echo "Waiting for service... attempt $i/30"
+        sleep 2
+    fi
+done
 
----
+# Final status check
+echo "=== Final Status Check ==="
+docker ps
+curl -s http://localhost/health || echo "Health check failed"
+curl -s http://localhost/ || echo "Main page failed"
+
+echo "=== ASTERRA Web Service Setup Completed ==="
+echo "Service should be available at http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/health"

@@ -1,4 +1,3 @@
-# scripts/private-server-init.sh
 #!/bin/bash
 
 # Update system
@@ -17,7 +16,7 @@ unzip awscliv2.zip
 
 # Create application directory
 mkdir -p /opt/geojson-processor
-cd /opt/geojson-processor
+cd /opt/geojson-processor || { echo "Failed to create/enter directory"; exit 1; }
 
 # Create GeoJSON processing application
 cat > app.py << 'EOF'

@@ -143,4 +143,4 @@ jobs:
         echo ""
         echo "🔗 View deployment:"
         echo "   ECR: https://console.aws.amazon.com/ecr/repositories/asterra-app"
-        echo "   ECS: https://console.aws.amazon.com/ecs/home?region=us-east-1#/clusters/asterra-cluster/services"
+        echo "   ECS: https://console.aws.amazon.com/ecs/home?region=us-east-1#/clusters/asterra-cluster/services"q
