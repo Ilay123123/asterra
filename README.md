@@ -1,263 +1,323 @@
-# Asterra
-# ASTERRA DevOps Technical Assignment
+name: 'ASTERRA DevOps - Smart CI/CD Pipeline'
 
-## Project Overview
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
-This project implements a complete cloud infrastructure for processing GeoJSON geospatial data files using AWS services. Think of it as building a smart factory that automatically processes geographic data - when you drop a file in one end, it comes out validated and stored in a spatial database on the other end.
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: asterra-assignment
+  ECS_CLUSTER: asterra-assignment-assignment
+  ECS_SERVICE: assignment-private-service
+  TF_VAR_environment: assignment
 
-## What This System Does
+jobs:
+  # Job 1: Detect what changed
+  detect-changes:
+    name: 'Detect Changes'
+    runs-on: ubuntu-latest
+    outputs:
+      terraform-changed: ${{ steps.changes.outputs.terraform }}
+      app-changed: ${{ steps.changes.outputs.app }}
+      dockerfile-changed: ${{ steps.changes.outputs.dockerfile }}
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Get full history for change detection
+        
+    - name: Detect Changes
+      uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          terraform:
+            - 'terraform/**'
+            - '*.tf'
+            - 'terraform.tfvars'
+          app:
+            - 'docker/**'
+            - 'src/**'
+            - 'requirements*.txt'
+          dockerfile:
+            - '**/Dockerfile'
+            - 'docker/**'
 
-The infrastructure creates a **data processing pipeline** that works like an assembly line:
+  # Job 2: Terraform Plan and Change Detection
+  terraform-plan:
+    name: 'Terraform Plan & Change Detection'
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform-changed == 'true'
+    outputs:
+      terraform-plan-changed: ${{ steps.plan-check.outputs.changed }}
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+        terraform_wrapper: false
+        
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+        
+    - name: Generate Terraform Plan
+      id: plan
+      run: |
+        cd terraform
+        terraform plan -detailed-exitcode -out=tfplan || exit_code=$?
+        echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+        
+        # Exit codes: 0 = no changes, 1 = error, 2 = changes
+        if [ $exit_code -eq 1 ]; then
+          echo "❌ Terraform plan failed"
+          exit 1
+        elif [ $exit_code -eq 2 ]; then
+          echo "📋 Infrastructure changes detected"
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "✅ No infrastructure changes needed"
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Cache Terraform Plan
+      if: steps.plan.outputs.changed == 'true'
+      uses: actions/cache@v3
+      with:
+        path: terraform/tfplan
+        key: terraform-plan-${{ github.sha }}
+        
+    - name: Comment Plan (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const output = `
+          ## 🏗️ Terraform Plan Results
+          
+          **Changes Detected:** ${{ steps.plan.outputs.changed }}
+          
+          \`\`\`
+          ${{ steps.plan.outputs.stdout }}
+          \`\`\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          });
 
-1. **Input**: Upload GeoJSON files to an S3 bucket (like dropping mail in a mailbox)
-2. **Processing**: Automatic validation and format checking (quality control)
-3. **Storage**: Valid data gets stored in PostgreSQL with PostGIS (organized filing system)
-4. **Access**: Web interface and development tools for managing the data
+  # Job 3: Build and Test Application
+  build-and-test:
+    name: 'Build & Test Application'
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app-changed == 'true' || needs.detect-changes.outputs.dockerfile-changed == 'true'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+        
+    - name: Install Dependencies
+      run: |
+        cd docker/geojson-processor
+        pip install -r requirements-test.txt
+        
+    - name: Run Tests
+      run: |
+        cd docker/geojson-processor
+        python -m pytest tests/ -v --tb=short
+        
+    - name: Build Docker Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        cd docker/geojson-processor
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        
+    - name: Push to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-## Architecture Components
+  # Job 4: Deploy Infrastructure (only if Terraform changed)
+  deploy-infrastructure:
+    name: 'Deploy Infrastructure'
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, build-and-test]
+    if: always() && needs.terraform-plan.outputs.terraform-plan-changed == 'true'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+        terraform_wrapper: false
+        
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Restore Terraform Plan
+      uses: actions/cache@v3
+      with:
+        path: terraform/tfplan
+        key: terraform-plan-${{ github.sha }}
+        
+    - name: Terraform Apply
+      run: |
+        cd terraform
+        terraform init
+        terraform apply -auto-approve tfplan
+        
+    - name: Output Infrastructure Info
+      run: |
+        cd terraform
+        echo "🚀 Infrastructure deployment complete!"
+        terraform output -json > ../infrastructure-outputs.json
+        
+    - name: Upload Infrastructure Outputs
+      uses: actions/upload-artifact@v3
+      with:
+        name: infrastructure-outputs
+        path: infrastructure-outputs.json
 
-### Core Infrastructure (The Foundation)
-- **VPC with Multi-AZ setup**: Your private cloud network with backup zones
-- **Public/Private Subnets**: Separate areas for public-facing and internal services
-- **Security Groups**: Smart firewalls that control access between components
-- **Internet Gateway & NAT**: Controlled internet access for services
+  # Job 5: Deploy Application (always runs for app changes)
+  deploy-application:
+    name: 'Deploy Application'
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-and-test, deploy-infrastructure]
+    if: always() && (needs.build-and-test.result == 'success' || needs.detect-changes.outputs.app-changed == 'true')
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Download Infrastructure Outputs
+      if: needs.deploy-infrastructure.result == 'success'
+      uses: actions/download-artifact@v3
+      with:
+        name: infrastructure-outputs
+        
+    - name: Update ECS Service
+      env:
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Get current task definition
+        TASK_DEFINITION=$(aws ecs describe-task-definition \
+          --task-definition $ECS_SERVICE \
+          --query 'taskDefinition' \
+          --output json)
+          
+        # Update image URI in task definition
+        NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE_URI "$ECR_REPOSITORY:$IMAGE_TAG" \
+          '.containerDefinitions[0].image = $IMAGE_URI | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          
+        # Register new task definition
+        NEW_TASK_DEFINITION_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition \
+          --cli-input-json file:///dev/stdin \
+          --query 'taskDefinition.taskDefinitionArn' \
+          --output text)
+          
+        # Update service
+        aws ecs update-service \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
+          --task-definition $NEW_TASK_DEFINITION_ARN
+          
+        echo "✅ ECS service updated with new image: $IMAGE_TAG"
+        
+    - name: Wait for Deployment
+      run: |
+        echo "⏳ Waiting for deployment to stabilize..."
+        aws ecs wait services-stable \
+          --cluster $ECS_CLUSTER \
+          --services $ECS_SERVICE
+        echo "🎉 Deployment completed successfully!"
 
-### Data Processing (The Engine)
-- **S3 Buckets**: File storage for incoming GeoJSON files and documentation
-- **ECS Fargate**: Containerized processing service that scales automatically
-- **Lambda Functions**: Event-driven processors triggered by file uploads
-- **ECR Repository**: Storage for Docker container images
-
-### Database Layer (The Memory)
-- **PostgreSQL RDS**: Managed database with automatic backups
-- **PostGIS Extension**: Geographic data types and spatial functions
-- **Multi-AZ deployment**: High availability with automatic failover
-
-### Development Environment (The Workshop)
-- **Windows Server EC2**: Development workspace with GIS tools
-- **RDP Access**: Remote desktop for development work
-- **Pre-installed Tools**: QGIS, Git, Docker, Python, AWS CLI, Terraform
-
-### Monitoring & Security (The Watchdog)
-- **CloudWatch**: Logging and monitoring for all services
-- **Secrets Manager**: Secure credential storage
-- **IAM Roles**: Fine-grained permissions for each service
-- **Encrypted Storage**: All data encrypted at rest and in transit
-
-## Quick Start Guide
-
-### Prerequisites
-```bash
-# Check if you have the required tools
-aws --version        # AWS CLI
-terraform --version  # Terraform
-docker --version     # Docker
-```
-
-### One-Command Deployment
-```bash
-# This script does everything for you
-./deploy.sh
-```
-
-The deployment script handles:
-- Infrastructure creation via Terraform
-- Docker image building and pushing
-- Service deployment and configuration
-- Documentation upload to S3
-- Health checks and validation
-
-### Manual Step-by-Step (If You Want to Understand Each Part)
-
-1. **Initialize Terraform**
-   ```bash
-   cd terraform
-   terraform init
-   terraform plan
-   terraform apply
-   ```
-
-2. **Build and Push Docker Image**
-   ```bash
-   # Get ECR login
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ecr-url>
-   
-   # Build and push
-   cd docker/geojson-processor
-   docker build -t <ecr-url>:latest .
-   docker push <ecr-url>:latest
-   ```
-
-3. **Upload Documentation**
-   ```bash
-   aws s3 cp docs/half-pager.html s3://<bucket-name>/index.html
-   ```
-
-## How to Use the System
-
-### Accessing Your Development Environment
-1. Get the Windows Server IP from Terraform output:
-   ```bash
-   cd terraform
-   terraform output windows_workspace_ip
-   ```
-2. Connect via RDP using your favorite RDP client
-3. Use the pre-installed tools for development work
-
-### Processing GeoJSON Files
-1. Upload files to the S3 ingestion bucket
-2. Watch CloudWatch logs for processing status
-3. Query the PostgreSQL database for processed data
-
-### Monitoring and Management
-- **Health Endpoint**: `http://<alb-dns>/health`
-- **CloudWatch Logs**: Monitor processing in real-time
-- **ECS Console**: Scale services up or down as needed
-
-## Project Structure Explained
-
-```
-asterra-assignment/
-├── terraform/              # Infrastructure as Code
-│   ├── main.tf             # Main configuration
-│   ├── networking.tf       # VPC, subnets, security groups
-│   ├── compute.tf          # EC2, ECS, scaling configurations
-│   ├── database.tf         # RDS PostgreSQL with PostGIS
-│   └── scripts/            # Initialization scripts
-├── docker/                 # Application containers
-│   └── geojson-processor/  # GeoJSON validation service
-├── docs/                   # Documentation and reports
-│   ├── README.md           # This file
-│   ├── half-pager.html     # Technical summary
-│   └── ARCHITECTURE.md     # Detailed architecture
-└── deploy.sh               # Single-command deployment
-```
-
-## Security Features
-
-**Network Security** (Like Building Security)
-- Private subnets for sensitive services (employees-only areas)
-- Security groups with least privilege (smart door locks)
-- VPC isolation (private building with controlled access)
-
-**Data Security** (Like a Bank Vault)
-- Encrypted storage for databases and S3 (locked safes)
-- Secrets Manager for credentials (secure key management)
-- IAM roles with minimal permissions (employee badges)
-
-**Access Security** (Like ID Checks)
-- RDP access from configurable IP ranges
-- Database access only from within VPC
-- SSH key-based authentication for Linux instances
-
-## DevOps Best Practices Implemented
-
-### Infrastructure as Code
-- **Terraform**: All infrastructure defined in code
-- **Version Control**: Track changes and rollback capabilities
-- **Reproducible**: Deploy identical environments anywhere
-
-### Containerization
-- **Docker**: Application packaged with all dependencies
-- **ECR**: Managed container registry
-- **ECS Fargate**: Serverless container orchestration
-
-### Monitoring and Logging
-- **CloudWatch**: Centralized logging and metrics
-- **Health Checks**: Automatic service monitoring
-- **Alerts**: Notification when things go wrong
-
-### Security
-- **Least Privilege**: Each service gets only needed permissions
-- **Encryption**: Data protected at rest and in transit
-- **Secret Management**: Credentials stored securely
-
-## Troubleshooting Common Issues
-
-### Deployment Fails
-```bash
-# Check AWS credentials
-aws sts get-caller-identity
-
-# Validate Terraform
-cd terraform && terraform validate
-
-# Check for conflicting resources
-terraform plan
-```
-
-### Can't Connect to Windows Server
-```bash
-# Verify security group allows your IP
-terraform output rdp_security_group_id
-
-# Check instance status
-aws ec2 describe-instances --filters "Name=tag:Name,Values=asterra-windows-workspace"
-```
-
-### Services Not Starting
-```bash
-# Check ECS service status
-aws ecs describe-services --cluster asterra-cluster --services asterra-geojson-processor-service
-
-# View logs
-aws logs describe-log-groups --log-group-name-prefix "/ecs/asterra"
-```
-
-## Understanding the Assignment Requirements
-
-This implementation addresses all the key requirements:
-
-✅ **Public/Private Service Separation**: ALB in public subnet, processing in private  
-✅ **VPC Network Design**: Multi-AZ with proper subnet architecture  
-✅ **RDP Development Workspace**: Windows Server with GIS tools  
-✅ **Container with GeoPandas**: Docker image with spatial data libraries  
-✅ **ECR Registry**: Automated image building and pushing  
-✅ **Single Script Deployment**: `./deploy.sh` handles everything  
-✅ **Infrastructure as Code**: Complete Terraform implementation  
-✅ **Security Best Practices**: Encryption, IAM, network isolation  
-✅ **Documentation**: Half-pager and technical documentation  
-
-## Learning Notes (DevOps Concepts)
-
-### Why This Architecture?
-Think of this like building a restaurant:
-- **Public Subnet** = Dining area (customers can access)
-- **Private Subnet** = Kitchen (only staff can access)
-- **Database Subnet** = Storage room (only specific staff can access)
-- **Security Groups** = Different staff uniforms with different access levels
-
-### Key DevOps Patterns Used
-1. **Infrastructure as Code**: Recipe that anyone can follow to build the same restaurant
-2. **Microservices**: Each service does one thing well (like having a dedicated chef for each dish)
-3. **Container Orchestration**: Like having a restaurant manager who automatically assigns chefs based on how busy it gets
-4. **Monitoring**: Like having cameras and sensors to know when something goes wrong
-
-### Why These Tools?
-- **Terraform**: Industry standard for infrastructure automation
-- **Docker**: Ensures your app runs the same everywhere
-- **ECS Fargate**: No servers to manage, just run your containers
-- **PostgreSQL + PostGIS**: The gold standard for spatial databases
-- **CloudWatch**: AWS-native monitoring that integrates with everything
-
-## Next Steps After Deployment
-
-1. **Test the System**: Upload a sample GeoJSON file
-2. **Explore the Database**: Connect and query spatial data
-3. **Monitor Performance**: Watch CloudWatch metrics
-4. **Scale Services**: Adjust ECS service desired count
-5. **Secure Access**: Restrict RDP to your specific IP range
-
-## Cleanup
-
-When you're done:
-```bash
-./deploy.sh --destroy
-```
-
-This removes all AWS resources to avoid ongoing charges.
-
----
-
-**Implementation completed as part of ASTERRA DevOps Technical Assignment**  
-*This documentation serves as both a deployment guide and learning resource for understanding modern DevOps practices.*
+  # Job 6: Notification and Summary
+  notify-completion:
+    name: 'Deployment Summary'
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-plan, deploy-infrastructure, deploy-application]
+    if: always()
+    
+    steps:
+    - name: Generate Deployment Summary
+      run: |
+        echo "# 🚀 ASTERRA Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Changes Detected:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Terraform:** ${{ needs.detect-changes.outputs.terraform-changed }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application:** ${{ needs.detect-changes.outputs.app-changed }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dockerfile:** ${{ needs.detect-changes.outputs.dockerfile-changed }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Actions Taken:" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.terraform-plan.outputs.terraform-plan-changed }}" == "true" ]; then
+          echo "✅ Infrastructure updated" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⏩ Infrastructure skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.deploy-application.result }}" == "success" ]; then
+          echo "✅ Application deployed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⏩ Application deployment skipped" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment completed at:** $(date)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,25 @@
+name: 'PR Validation'
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Terraform Validate
+      if: contains(github.event.pull_request.changed_files, 'terraform/')
+      run: |
+        cd terraform
+        terraform init
+        terraform validate
+        terraform plan
+
+    - name: Test Application
+      if: contains(github.event.pull_request.changed_files, 'docker/')
+      run: |
+        cd docker/geojson-processor
+        pip install -r requirements-test.txt
+        python -m pytest tests/ -v
