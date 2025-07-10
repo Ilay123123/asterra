@@ -38,6 +38,8 @@ Run the deployment script:
 - Public ALB: http://asterra-public-alb-391303536.us-east-1.elb.amazonaws.com/
 - RDP Workspace: `<windows-public-ip>:3389`
 - Database: Accessible only from private subnets
+- architecture https://asterra-public-docs-94d54dba.s3.us-east-1.amazonaws.com/architecture.html
+- https://asterra-public-docs-94d54dba.s3.us-east-1.amazonaws.com/half-pager.html
 
 ### Monitoring
 
