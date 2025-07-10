@@ -35,7 +35,7 @@ Run the deployment script:
 
 ### Access Points
 
-- Public ALB: `[http://<alb-dns-name>](http://asterra-public-alb-391303536.us-east-1.elb.amazonaws.com/)`
+- Public ALB: http://asterra-public-alb-391303536.us-east-1.elb.amazonaws.com/
 - RDP Workspace: `<windows-public-ip>:3389`
 - Database: Accessible only from private subnets
 
