@@ -1,4 +1,4 @@
-# S3 buckets for file ingestion and infrastructure state
+# storage.tf - S3 buckets for file ingestion and infrastructure state
 
 # Variables
 variable "s3_force_destroy" {
@@ -12,6 +12,9 @@ resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
+# ==============================================================================
+# DATA INGESTION BUCKET
+# ==============================================================================
 
 # Data ingestion bucket - where GeoJSON files are uploaded
 resource "aws_s3_bucket" "data_ingestion" {
@@ -106,6 +109,9 @@ resource "aws_s3_bucket_notification" "data_ingestion_notification" {
   depends_on = [aws_s3_bucket_public_access_block.data_ingestion]
 }
 
+# ==============================================================================
+# TERRAFORM STATE BUCKET
+# ==============================================================================
 
 # Infrastructure state bucket - stores Terraform state files
 resource "aws_s3_bucket" "terraform_state" {
@@ -139,7 +145,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
   }
 }
 
-
 # Block public access for state bucket (very important!)
 resource "aws_s3_bucket_public_access_block" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
@@ -150,7 +155,9 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-
+# ==============================================================================
+# PUBLIC DOCUMENTATION BUCKET
+# ==============================================================================
 
 # Public bucket for serving documentation and reports
 resource "aws_s3_bucket" "public_docs" {
@@ -177,22 +184,34 @@ resource "aws_s3_bucket_website_configuration" "public_docs" {
   }
 }
 
-# # Public read access for docs bucket
-# resource "aws_s3_bucket_policy" "public_docs_policy" {
-#   bucket = aws_s3_bucket.public_docs.id
-#
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         Effect    = "Allow"
-#         Principal = "*"
-#         Action    = "s3:GetObject"
-#         Resource  = "${aws_s3_bucket.public_docs.arn}/*"
-#       }
-#     ]
-#   })
-# }
+# Allow public access for docs bucket (required for website)
+resource "aws_s3_bucket_public_access_block" "public_docs" {
+  bucket = aws_s3_bucket.public_docs.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# Public read access for docs bucket
+resource "aws_s3_bucket_policy" "public_docs_policy" {
+  bucket = aws_s3_bucket.public_docs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.public_docs.arn}/*"
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.public_docs]
+}
 
 # Server-side encryption for public docs bucket
 resource "aws_s3_bucket_server_side_encryption_configuration" "public_docs" {
@@ -205,6 +224,45 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "public_docs" {
     bucket_key_enabled = true
   }
 }
+
+# Auto-upload documentation files
+resource "aws_s3_object" "half_pager" {
+  bucket = aws_s3_bucket.public_docs.id
+  key    = "index.html"
+  source = "../docs/half-pager.html"
+  content_type = "text/html"
+
+  # Update when file changes
+  etag = filemd5("../docs/half-pager.html")
+
+  tags = {
+    Name        = "half-pager-report"
+    Environment = "assignment"
+  }
+
+  depends_on = [aws_s3_bucket_policy.public_docs_policy]
+}
+
+resource "aws_s3_object" "readme_docs" {
+  bucket = aws_s3_bucket.public_docs.id
+  key    = "README.md"
+  source = "../docs/README.md"
+  content_type = "text/markdown"
+
+  # Update when file changes
+  etag = filemd5("../docs/README.md")
+
+  tags = {
+    Name        = "documentation"
+    Environment = "assignment"
+  }
+
+  depends_on = [aws_s3_bucket_policy.public_docs_policy]
+}
+
+# ==============================================================================
+# ADDITIONAL S3 RESOURCES
+# ==============================================================================
 
 # CloudWatch log group for S3 access logs (optional)
 resource "aws_cloudwatch_log_group" "s3_access_logs" {
@@ -246,8 +304,10 @@ resource "aws_s3_object" "sample_geojson" {
   }
 }
 
+# ==============================================================================
+# OUTPUTS
+# ==============================================================================
 
-# Outputs
 output "data_ingestion_bucket_name" {
   description = "Name of the data ingestion S3 bucket"
   value       = aws_s3_bucket.data_ingestion.bucket
@@ -278,8 +338,17 @@ output "public_docs_bucket_url" {
   value       = "http://${aws_s3_bucket.public_docs.bucket}.s3-website-${data.aws_region.current.name}.amazonaws.com"
 }
 
+output "public_docs_bucket_domain" {
+  description = "S3 website domain for the public documentation bucket"
+  value       = aws_s3_bucket_website_configuration.public_docs.website_domain
+}
+
+output "public_docs_bucket_endpoint" {
+  description = "S3 website endpoint for the public documentation bucket"
+  value       = aws_s3_bucket_website_configuration.public_docs.website_endpoint
+}
+
 output "sample_geojson_url" {
   description = "URL of the sample GeoJSON file"
   value       = "s3://${aws_s3_bucket.data_ingestion.bucket}/${aws_s3_object.sample_geojson.key}"
 }
-

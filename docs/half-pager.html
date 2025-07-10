@@ -1,87 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ASTERRA DevOps Assignment - Technical Report</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            line-height: 1.6;
-            padding: 20px;
-        }
-        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; }
-        h2 { color: #34495e; }
-        .section { margin-bottom: 30px; }
-        .highlight { background-color: #f8f9fa; padding: 15px; border-left: 4px solid #3498db; }
-        .challenge { background-color: #fff3cd; padding: 10px; border-radius: 5px; }
-        ul { padding-left: 20px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ASTERRA DevOps Assignment – Technical Report</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.6;
+      background-color: #f9f9f9;
+      color: #222;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 40px;
+      font-size: 1.6em;
+      border-bottom: 2px solid #ccc;
+      padding-bottom: 10px;
+    }
+    h2 {
+      margin-top: 30px;
+      font-size: 1.2em;
+      color: #333;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .section {
+      margin-bottom: 25px;
+    }
+  </style>
 </head>
 <body>
-    <h1>ASTERRA DevOps Assignment - Technical Implementation Report</h1>
 
-    <div class="section">
-        <h2>🚀 CI/CD Pipeline</h2>
-        <p>Implemented comprehensive GitHub Actions workflow with:</p>
+  <h1>ASTERRA DevOps Assignment – Technical Report</h1>
+
+  <div class="section">
+    <h2>Overview</h2>
+    <p>
+      Deployed AWS infrastructure via Terraform: public ODK Central server behind an Application Load Balancer (ALB), and a private GeoJSON processing pipeline using event-driven architecture.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Key Technical Decisions</h2>
+    <ul>
+      <li>Infrastructure: Terraform for single-command deployment. VPC with public, private, and database subnets following AWS Well-Architected Framework.</li>
+      <li>Container Platform: Chose ECS Fargate over EC2 to eliminate server management and simplify operations.</li>
+      <li>Processing Pipeline: Used S3 → Lambda → ECS pattern for event-driven processing. Selected over EventBridge for simplicity, direct S3 integration, and low latency. Lambda validates and triggers a containerized Python/GeoPandas app.</li>
+      <li>Security: Enforced least-privilege IAM roles, restrictive security groups (only ALB ports 80/443), and used AWS Secrets Manager for RDS credentials. Deployment is fully automated via a single deploy.sh script.</li>
+      <li>CI/CD: Implemented GitHub Actions for automated versioning, Docker builds to ECR, and ECS rolling deployments. Separated test and production dependencies to optimize pipeline speed.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Primary Challenge – GDAL Dependencies</h2>
+    <ul>
+      <li>Problem: GDAL, required by GeoPandas, caused compilation errors across environments – local builds worked, but CI/CD pipelines failed.</li>
+      <li>Solution:
         <ul>
-            <li><strong>Testing:</strong> Automated code quality checks (flake8, black), unit tests</li>
-            <li><strong>Building:</strong> Docker image build and push to ECR with versioning</li>
-            <li><strong>Deployment:</strong> Automated infrastructure updates via Terraform</li>
-            <li><strong>Monitoring:</strong> Integration with CloudWatch for logging and metrics</li>
+          <li>Split dependencies: requirements-test.txt (lightweight CI) vs requirements-docker.txt (full GIS)</li>
+          <li>Installed GDAL system libraries in Docker before Python packages</li>
+          <li>Set required environment variables (GDAL_CONFIG, CPLUS_INCLUDE_PATH)</li>
         </ul>
-    </div>
+      </li>
+      <li>Result: Fast CI/CD pipeline with full GIS capabilities in production.</li>
+    </ul>
+  </div>
 
-    <div class="section">
-        <h2>📊 Key Features Delivered</h2>
-        <div class="highlight">
-            <ul>
-                <li>✅ <strong>Complete Infrastructure as Code:</strong> Single-script deployment with Terraform</li>
-                <li>✅ <strong>GeoJSON Processing Pipeline:</strong> S3 → Validation → PostGIS storage</li>
-                <li>✅ <strong>Public Services:</strong> ODK Central accessible via load balancer</li>
-                <li>✅ <strong>Development Workspace:</strong> Windows Server with RDP and GIS tools</li>
-                <li>✅ <strong>Security Best Practices:</strong> Encrypted storage, secret management, network isolation</li>
-                <li>✅ <strong>Monitoring & Logging:</strong> CloudWatch integration across all services</li>
-                <li>✅ <strong>Auto-scaling:</strong> CPU-based scaling for high availability</li>
-                <li>✅ <strong>Containerization:</strong> Docker with GeoPandas and GDAL support</li>
-            </ul>
-        </div>
-    </div>
+  <div class="section">
+    <h2>What I Learned</h2>
+    <p>
+      Well-structured Terraform modules prevent infrastructure conflicts. Event-driven patterns elegantly decouple components. Security should be designed from the start—retrofitting IAM and network rules later is more complex. Infrastructure should scale with actual needs: start simple, then iterate based on usage.
+    </p>
+  </div>
 
-    <div class="section">
-        <h2>💡 Learning Outcomes</h2>
-        <p>This project reinforced several key DevOps concepts:</p>
-        <ul>
-            <li><strong>Infrastructure as Code:</strong> Terraform's power in creating reproducible infrastructure</li>
-            <li><strong>Container Orchestration:</strong> ECS Fargate vs EC2 trade-offs for different workloads</li>
-            <li><strong>Network Architecture:</strong> Proper subnet design and security group configuration</li>
-            <li><strong>Database Integration:</strong> RDS parameter groups and extension management</li>
-            <li><strong>CI/CD Best Practices:</strong> Automated testing, building, and deployment workflows</li>
-        </ul>
-    </div>
-
-    <div class="section">
-        <h2>🔧 Deployment Instructions</h2>
-        <div class="highlight">
-            <p><strong>Prerequisites:</strong> AWS CLI configured, Terraform installed, Docker running</p>
-            <p><strong>Single Command Deployment:</strong></p>
-            <code>./deploy.sh</code>
-            <p>This script handles the complete infrastructure setup, application building, and service deployment.</p>
-        </div>
-    </div>
-
-    <div class="section">
-        <h2>🌐 Access Points</h2>
-        <ul>
-            <li><strong>Public Service:</strong> http://[ALB-DNS-NAME] (ODK Central)</li>
-            <li><strong>Processing Service:</strong> Internal ECS service with health endpoints</li>
-            <li><strong>Development Workspace:</strong> RDP to [WINDOWS-PUBLIC-IP]:3389</li>
-            <li><strong>Database:</strong> Private access via application services</li>
-        </ul>
-    </div>
-
-    <div class="section">
-        <p><em>Implementation completed as part of ASTERRA DevOps Technical Assignment</em></p>
-    </div>
 </body>
 </html>

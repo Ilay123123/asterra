@@ -1,0 +1,84 @@
+{
+  "type": "FeatureCollection",
+  "name": "ASTERRA_DevOps_Test",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "ASTERRA HQ",
+        "address": "Atir Yeda Street, O-Tech Building 2, 5th floor",
+        "city": "Kfar Saba",
+        "country": "Israel",
+        "test_purpose": "DevOps Assignment Validation",
+        "timestamp": "2025-07-10T12:00:00Z"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [34.9066, 32.1749]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tel Aviv Tech Hub",
+        "description": "Major tech center in Israel",
+        "test_type": "urban_point",
+        "elevation": 5
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [34.7818, 32.0853]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jerusalem Historic Center",
+        "description": "Historic city center",
+        "test_type": "cultural_point",
+        "elevation": 750
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [35.2137, 31.7683]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Israel Coastal Route",
+        "description": "Major highway along Mediterranean coast",
+        "test_type": "line_geometry",
+        "highway_type": "primary"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [34.7818, 32.0853],
+          [34.7767, 32.0624],
+          [34.7512, 31.9989],
+          [34.6793, 31.8920]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gush Dan Metropolitan Area",
+        "description": "Greater Tel Aviv metropolitan area",
+        "test_type": "polygon_geometry",
+        "population": 4000000
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [34.6000, 32.2000],
+          [35.0000, 32.2000],
+          [35.0000, 31.8000],
+          [34.6000, 31.8000],
+          [34.6000, 32.2000]
+        ]]
+      }
+    }
+  ]
+}
