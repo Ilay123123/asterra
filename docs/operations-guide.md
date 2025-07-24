@@ -12,6 +12,9 @@
 
 ## Essential Commands & Access Points
 
+git clone https://github.com/your-username/asterra.git
+
+
 ### AWS Resources
 ```bash
 # S3 Bucket (Data Ingestion) - Dynamically find bucket with random suffix
